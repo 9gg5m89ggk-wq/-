@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MaestroHand - 未來派手勢和弦音樂遊戲</title>
+    
+    <!-- 引入 MediaPipe 與相機輔助庫 -->
+    <script src="https://jsdelivr.net" crossorigin="anonymous"></script>
+    <script src="https://jsdelivr.net" crossorigin="anonymous"></script>
+    
+    <style>
+        :root {
+            --neon-blue: #00f3ff;
+            --neon-pink: #ff007f;
+            --neon-purple: #9d00ff;
+            --dark-bg: #0a0a16;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--dark-bg);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #fff;
+        }
+
+        /* 遊戲主容器 */
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* 畫布與視訊 */
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        video {
+            position: absolute;
+            transform: scaleX(-1); /* 鏡像顯示 */
+            visibility: hidden;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 現代感 UI 疊加層 */
+        .ui-layer {
+            position: absolute;
+            z-index: 10;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            width: 94%;
+            height: 90%;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 2.5rem;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            background: linear-gradient(45deg, var(--neon-blue), var(--neon-pink));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 20px rgba(0, 243, 255, 0.3);
+        }
+
+        .score-board {
+            font-size: 1.8rem;
+            font-weight: bold;
+            font-family: monospace;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(0, 243, 255, 0.2);
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.1);
+        }
+
+        /* 遊戲說明引導與狀態面板 */
+        #status-panel {
+            position: absolute;
+            bottom: 5%;
+            left: 3%;
+            z-index: 10;
+            background: rgba(10, 10, 22, 0.85);
+            border-left: 5px solid var(--neon-blue);
+            padding: 20px;
+            border-radius: 0 16px 16px 0;
+            max-width: 320px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            backdrop-filter: blur(10px);
+        }
+
+        .chord-indicator {
+            font-size: 3rem;
+            font-weight: 900;
+            color: var(--neon-pink);
+            text-shadow: 0 0 10px var(--neon-pink);
+            margin-bottom: 5px;
+        }
+
+        /* 覆蓋式選單（啟動/結束畫面） */
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(5, 5, 10, 0.9);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            backdrop-filter: blur(15px);
+            transition: all 0.5s ease;
+        }
+
+        .overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, var(--neon-purple), var(--neon-pink));
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 0 25px rgba(255, 0, 127, 0.5);
+            transition: transform 0.2s, box-shadow 0.2s;
+            pointer-events: auto;
+            margin-top: 20px;
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 35px rgba(255, 0, 127, 0.8);
+        }
+
+        /* 倒數計時器 */
+        #timer {
+            font-size: 2rem;
+            color: #fff;
+            background: linear-gradient(to right, var(--neon-pink), var(--neon-purple));
+            padding: 5px 20px;
+            border-radius: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <!-- 視訊與渲染畫布 -->
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- 遊戲中精美 UI 層 -->
+        <div class="ui-layer">
+            <div class="header">
+                <h1>MaestroHand</h1>
+                <div id="timer">時間: 60s</div>
+                <div class="score-board">SCORE: <span id="score-val">0000</span></div>
+            </div>
+        </div>
+
+        <div id="status-panel">
+            <div style="font-size:0.8rem; color:#aaa; letter-spacing: 1px;">當前偵測和弦</div>
+            <div id="current-chord" class="chord-indicator">NONE</div>
+            <div style="font-size:0.8rem; color:#888; line-height: 1.4;">
+                👈 左手捏合手指換和弦 (食指:C, 中指:F, 無名指:G, 小指:Am)<br>
+                👉 右手食指在畫面右側「琴弦區」上下揮動撥弦！
+            </div>
+        </div>
+
+        <!-- 遊戲開始/結束 完整的遊戲循環選單 -->
+        <div id="start-overlay" class="overlay">
+            <h1 style="font-size: 4rem; margin-bottom: 10px;">MAESTRO HAND</h1>
+            <p style="color: var(--neon-blue); font-size: 1.2rem; max-width: 500px; line-height: 1.6;">
+                這是一款全新型態的「空氣和弦」體感音樂遊戲。利用 AI 偵測您的雙手，化虛擬為樂器。
+            </p>
+            <button class="btn" onclick="startGame()">初始化相機並開始遊戲</button>
+        </div>
+
+        <div id="gameover-overlay" class="overlay hidden">
+            <h1 style="color: var(--neon-pink); font-size: 3.5rem;">演奏結束</h1>
+            <p style="font-size: 1.5rem; margin: 20px 0;">最終得分：<span id="final-score" style="color:var(--neon-blue); font-weight:bold;">0</span></p>
+            <button class="btn" onclick="resetGame()">再玩一次</button>
+        </div>
+    </div>
+
+    <script>
+        // --- 全局變數與配置 ---
+        const videoElement = document.getElementById('webcam');
+        const canvasElement = document.getElementById('gameCanvas');
+        const ctx = canvasElement.getContext('2d');
+        
+        let score = 0;
+        let timeLeft = 60;
+        let gameInterval = null;
+        let isGameRunning = false;
+        
+        // 遊戲核心數據狀態
+        let currentChord = "NONE";
+        let lastRightY = 0; 
+        let rightHandFilterCutoff = 1000;
+        let particles = [];
+        
+        // 樂譜節奏提示系統 (產生隨機目標和弦要玩家彈奏)
+        let targetChord = "C";
+        let chordColors = { "C": "#00f3ff", "F": "#ff007f", "G": "#9d00ff", "Am": "#ffaa00", "NONE": "#444" };
+
+        // --- Web Audio API 合成器設置 ---
+        let audioCtx = null;
+        
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        // 和弦音高頻率對照表 (C, F, G, Am)
+        const chordsFreq = {
+            "C": [261.63, 329.63, 392.00, 523.25],   // C, E, G, C
+            "F": [349.23, 440.00, 523.25, 698.46],   // F, A, C, F
+            "G": [392.00, 493.88, 587.33, 783.99],   // G, B, D, G
+            "Am": [220.00, 277.18, 440.00, 554.37]   // A, C#, E, A
+        };
+
+        function playChordSound(chordName, filterFreq) {
+            if (!audioCtx || !chordsFreq[chordName]) return;
+            
+            const now = audioCtx.currentTime;
+            // 建立低通濾波器來實現右手的「揉弦/音色控制」
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(filterFreq, now);
+            filter.Q.setValueAtTime(5, now);
+            filter.connect(audioCtx.destination);
+
+            // 模擬四弦樂器同時發聲
+            chordsFreq[chordName].forEach((freq, index) => {
+                const osc = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                
+                osc.type = index % 2 === 0 ? 'sawtooth' : 'triangle'; // 混合音色
+                osc.frequency.setValueAtTime(freq, now);
+                
+                // 琶音效果：每根弦微調延遲觸發
+                const strumDelay = index * 0.03;
+                
+                gainNode.gain.setValueAtTime(0, now);
+                gainNode.gain.linearRampToValueAtTime(0.2, now + strumDelay + 0.02);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, now + strumDelay + 0.8); // 餘音
+                
+                osc.connect(gainNode);
+                gainNode.connect(filter);
+                
+                osc.start(now + strumDelay);
+                osc.stop(now + strumDelay + 0.8);
+            });
+        }
+
+        // --- 視覺粒子特效系統 ---
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 5 + 3;
+                this.speedX = Math.random() * 6 - 3;
+                this.speedY = Math.random() * -5 - 2;
+                this.color = color;
+                this.alpha = 1;
+            }
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.alpha -= 0.02;
+            }
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.shadowBlur = 10;
+請謹慎使用程式碼。ctx.shadowColor = this.color;ctx.beginPath();ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);ctx.fillStyle = this.color;ctx.fill();ctx.restore();}}function createExplosion(x, y, color) {for (let i = 0; i < 20; i++) {particles.push(new Particle(x, y, color));}}// --- 視窗縮放適應 ---function resizeCanvas() {canvasElement.width = window.innerWidth;canvasElement.height = window.innerHeight;}window.addEventListener('resize', resizeCanvas);resizeCanvas();// --- 核心遊戲循環與邏輯控制 ---function startGame() {initAudio();document.getElementById('start-overlay').classList.add('hidden');isGameRunning = true;score = 0;timeLeft = 60;nextTargetChord();gameInterval = setInterval(() => {timeLeft--;document.getElementById('timer').innerText = 時間: ${timeLeft}s;if (timeLeft <= 0) {endGame();}}, 1000);}function endGame() {isGameRunning = false;clearInterval(gameInterval);document.getElementById('final-score').innerText = score;document.getElementById('gameover-overlay').classList.remove('hidden');}function resetGame() {document.getElementById('gameover-overlay').classList.add('hidden');startGame();}function nextTargetChord() {const chords = ["C", "F", "G", "Am"];targetChord = chords[Math.floor(Math.random() * chords.length)];}// --- MediaPipe 核心演算法：手勢計算與識別 ---function getDistance(p1, p2) {return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));}function processHands(results) {// 清理畫布並繪製黑科技底色背景ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);ctx.fillStyle = "rgba(10, 10, 22, 0.4)";ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);// 繪製背景視覺元素：右側的「虛擬雷射琴弦區」const stringX = canvasElement.width * 0.75;ctx.save();ctx.strokeStyle = chordColors[targetChord];ctx.lineWidth = 4;ctx.shadowBlur = 15;ctx.shadowColor = chordColors[targetChord];ctx.beginPath();ctx.moveTo(stringX, 0);ctx.lineTo(stringX, canvasElement.height);ctx.stroke();ctx.restore();// 提示要彈奏的目標和弦ctx.fillStyle = "rgba(255,255,255,0.7)";ctx.font = "20px sans-serif";ctx.fillText("🎯 目標和弦指令快彈：", 50, 120);ctx.fillStyle = chordColors[targetChord];ctx.font = "bold 45px sans-serif";ctx.fillText(targetChord, 50, 170);// 更新並繪製粒子particles.forEach((p, idx) => {p.update();p.draw();if (p.alpha <= 0) particles.splice(idx, 1);});if (!isGameRunning) return;currentChord = "NONE"; // 預設if (results.multiHandLandmarks && results.multiHandedness) {for (let i = 0; i < results.multiHandLandmarks.length; i++) {const landmarks = results.multiHandLandmarks[i];const handedness = results.multiHandedness[i].label; // Left or Right// 因為影像鏡像過，MediaPipe 偵測出的 Left 畫面看起來在右邊。// 為了符合直覺，我們透過螢幕座標 X 軸來區分左右手功能：const isLeftArea = landmarks[0].x > 0.5; // 畫面左側(大於0.5鏡像) -> 定義為按弦手if (isLeftArea) {// === 左手策略：檢測拇指尖與其他四指尖的 Pinch 距離 ===const thumb = landmarks[4];const index = landmarks[8];const middle = landmarks[12];const ring = landmarks[16];const pinky = landmarks[20];const thresh = 0.05; // 捏合判定閾值if (getDistance(thumb, index) < thresh) currentChord = "C";else if (getDistance(thumb, middle) < thresh) currentChord = "F";else if (getDistance(thumb, ring) < thresh) currentChord = "G";else if (getDistance(thumb, pinky) < thresh) currentChord = "Am";// 渲染左手特效骨架drawHandMesh(landmarks, chordColors[currentChord]);} else {// === 右手策略：撥弦與音色揉弦控制 ===const indexTip = landmarks[8];const screenX = (1 - indexTip.x) * canvasElement.width;const screenY = indexTip.y * canvasElement.height;// 1. 揉弦動態效果計算：計算掌心(0)到中指尖(12)的距離，模擬手掌開合度const palmSize = getDistance(landmarks[0], landmarks[12]);// 將開合度動態映射至 400Hz ~ 4000Hz 濾波頻率rightHandFilterCutoff = Math.min(Math.max(palmSize * 12000, 400), 4000);// 2. 撥弦碰撞檢測：當食指尖穿越右側虛擬琴弦const prevX = stringX; // 琴弦位置if (Math.abs(screenX - stringX) < 40) { // 靠近琴弦// 檢測垂直移動（手勢有上下揮動）if (Math.abs(screenY - lastRightY) > 8 && currentChord !== "NONE") {// 成功觸發撥弦！playChordSound(currentChord, rightHandFilterCutoff);createExplosion(screenX, screenY, chordColors[currentChord]);// 計分邏輯：如果彈對了目標和弦加高分if (currentChord === targetChord) {score += 100;nextTargetChord(); // 更換下一個目標} else {score += 20; // 彈奏其他和弦給予基礎分}document.getElementById('score-val').innerText = String(score).padStart(4, '0');}}lastRightY = screenY;// 渲染右手特效骨架 (呈現亮青色科技感)drawHandMesh(landmarks, "#00ffaa");// 在右手食指尖畫上動態光暈ctx.beginPath();ctx.arc(screenX, screenY, 15, 0, Math.PI*2);ctx.fillStyle = "rgba(0, 255, 170, 0.5)";ctx.fill();}}}document.getElementById('current-chord').innerText = currentChord;document.getElementById('current-chord').style.color = chordColors[currentChord];document.getElementById('current-chord').style.textShadow = 0 0 15px ${chordColors[currentChord]};}// 精美的骨架連線繪製函式function drawHandMesh(landmarks, color) {ctx.save();ctx.strokeStyle = color;ctx.lineWidth = 3;ctx.shadowBlur = 8;ctx.shadowColor = color;// 簡化版手掌連線架構const connections = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];connections.forEach(([f, t]) => {const pt1 = landmarks[f];const pt2 = landmarks[t];ctx.beginPath();ctx.moveTo((1 - pt1.x) * canvasElement.width, pt1.y * canvasElement.height);ctx.lineTo((1 - pt2.x) * canvasElement.width, pt2.y * canvasElement.height);ctx.stroke();});// 繪製節點landmarks.forEach(pt => {ctx.beginPath();ctx.arc((1 - pt.x) * canvasElement.width, pt.y * canvasElement.height, 4, 0, Math.PI*2);ctx.fillStyle = "#fff";ctx.fill();});ctx.restore();}// --- 初始化 MediaPipe Hands 核心服務 ---const hands = new Hands({locateFile: (file) => https://jsdelivr.net{file}});hands.setOptions({maxNumHands: 2,modelComplexity: 1,minDetectionConfidence: 0.6,minTrackingConfidence: 0.6});hands.onResults(processHands);// 初始化相機串流const camera = new Camera(videoElement, {onFrame: async () => {await hands.send({ image: videoElement });},width: 1280,height: 720});camera.start();
